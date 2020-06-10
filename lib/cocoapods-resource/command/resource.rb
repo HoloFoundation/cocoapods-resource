@@ -18,26 +18,96 @@ module Pod
     #       in the `plugins.json` file, once your plugin is released.
     #
     class Resource < Command
-      self.summary = 'Short description of cocoapods-resource.'
+      self.summary = '组件化资源文件管理配置工具。'
 
       self.description = <<-DESC
-        Longer description of cocoapods-resource.
+        为组件配置预编译宏（Preprocessor Macros），以实现在代码执行行获取当前所在 Pod 的名称。若不传递 --target-pods 参数默认给当前所有 Pod 添加配置。
       DESC
 
-      self.arguments = 'NAME'
+      self.arguments = [
+        CLAide::Argument.new('MACRO_NAME', true)
+      ]
+
+      def self.options
+        [
+          ['--target-pods=POD_NAME', '传入 Pod 名称数组，给指定的 Pod 配置预编译宏（Preprocessor Macros）。']
+        ]
+      end
+            
 
       def initialize(argv)
-        @name = argv.shift_argument
+        @macro_name = argv.shift_argument
+        @target_pods = argv.option('target-pods', '')
         super
       end
 
       def validate!
         super
-        help! 'A Pod name is required.' unless @name
+        help! 'A macro name for Pod is required.' unless @macro_name
       end
 
       def run
-        UI.puts "Add your implementation for the cocoapods-resource plugin in #{__FILE__}"
+
+        raise Informative, "No 'Pods' found in the project directory." unless Dir.exists? "Pods"
+
+        macro_name = @macro_name
+
+        completed_pods = Array.new
+        target_pods = Array.new
+        @target_pods.split(',').each do |pod|
+          target_pods.push(pod.gsub(' ',''))
+        end
+
+
+        file_paths = File.expand_path('Pods/**/*.*.xcconfig')
+        Dir.glob(file_paths) do |xcconfig|
+
+          pod_name = File.basename(xcconfig, ".*")
+          pod_name = File.basename(pod_name, ".*")
+
+          # Pods- 开头，跳过 
+          next if /^Pods-/ =~ pod_name
+
+          # 传入目标 Pod 并且未匹配到，跳过
+          if target_pods.length > 0 then
+            next unless target_pods.index(pod_name)
+          end
+
+          pre_macro = " #{macro_name}=@(\\\"#{pod_name}\\\")"
+
+          gcc_line = ''
+          xcconfig_file = File.open(xcconfig)
+          xcconfig_file.each_line do |line|
+            if line.include?('GCC_PREPROCESSOR_DEFINITIONS') then
+              gcc_line = line
+              break
+            end
+          end
+          xcconfig_file.close
+
+          # 未找到 GCC_PREPROCESSOR_DEFINITIONS 行，跳过
+          next if gcc_line.empty?
+          # GCC_PREPROCESSOR_DEFINITIONS 行已包含目标预编译宏（Preprocessor Macros），跳过
+          next if gcc_line.include?(macro_name)
+
+          macro_line = gcc_line.chomp + pre_macro + "\n"
+          xcconfig_text = File.read(xcconfig)
+          xcconfig_text = xcconfig_text.gsub(gcc_line, macro_line)
+        
+          File.open(xcconfig, "w") do |file|
+            file.syswrite(xcconfig_text)
+          end
+
+          completed_pods.push(pod_name) unless completed_pods.index(pod_name)
+
+        end
+
+        if completed_pods.length > 0 then
+          UI.puts "Pod resource complete! These pods have been changed: #{completed_pods}."
+        else
+          UI.puts "No pod has been changed."
+        end
+
       end
     end
   end
