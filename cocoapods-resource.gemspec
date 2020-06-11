@@ -8,9 +8,9 @@ Gem::Specification.new do |spec|
   spec.version       = CocoapodsResource::VERSION
   spec.authors       = ['gonghonglou']
   spec.email         = ['gonghonglou@icloud.com']
-  spec.description   = %q{A short description of cocoapods-resource.}
-  spec.summary       = %q{A longer description of cocoapods-resource.}
-  spec.homepage      = 'https://github.com/EXAMPLE/cocoapods-resource'
+  spec.description   = %q{Resource file management configuration tool for Pod.}
+  spec.summary       = %q{Configure the pod with Preprocessor Macros to get the name of the current Pod at the line of code execution. By default, add configuration to all current Pods.}
+  spec.homepage      = 'https://github.com/HoloFoundation/cocoapods-resource'
   spec.license       = 'MIT'
 
   spec.files         = `git ls-files`.split($/)
