@@ -18,10 +18,10 @@ module Pod
     #       in the `plugins.json` file, once your plugin is released.
     #
     class Resource < Command
-      self.summary = '组件化资源文件管理配置工具。'
+      self.summary = 'Resource file management configuration tool for Pod.'
 
       self.description = <<-DESC
-        为组件配置预编译宏（Preprocessor Macros），以实现在代码执行行获取当前所在 Pod 的名称。若不传递 --target-pods 参数默认给当前所有 Pod 添加配置。
+        Configure the pod with Preprocessor Macros to get the name of the current Pod at the line of code execution. By default, add configuration to all current Pods.
       DESC
 
       self.arguments = [
@@ -30,14 +30,14 @@ module Pod
 
       def self.options
         [
-          ['--target-pods=POD_NAME', '传入 Pod 名称数组，给指定的 Pod 配置预编译宏（Preprocessor Macros）。']
+          ['--pods=POD_NAME', 'Pass in the Pod name array, and configure the Preprocessor Macros for these specified Pods.']
         ]
       end
             
 
       def initialize(argv)
         @macro_name = argv.shift_argument
-        @target_pods = argv.option('target-pods', '')
+        @target_pods = argv.option('pods', '')
         super
       end
 
@@ -48,32 +48,29 @@ module Pod
 
       def run
 
-        raise Informative, "No 'Pods' found in the project directory." unless Dir.exists? "Pods"
+        raise Informative, "No 'Pods' folder found in the project directory." unless Dir.exists? "Pods"
 
         macro_name = @macro_name
 
         completed_pods = Array.new
+        already_pods = Array.new
         target_pods = Array.new
         @target_pods.split(',').each do |pod|
           target_pods.push(pod.gsub(' ',''))
         end
 
 
-        file_paths = File.expand_path('Pods/**/*.*.xcconfig')
-        Dir.glob(file_paths) do |xcconfig|
+        xcconfig_paths = File.expand_path('Pods/**/*.*.xcconfig')
+        Dir.glob(xcconfig_paths) do |xcconfig|
 
           pod_name = File.basename(xcconfig, ".*")
           pod_name = File.basename(pod_name, ".*")
 
-          # Pods- 开头，跳过 
+          # Pods- start, next
           next if /^Pods-/ =~ pod_name
-
-          # 传入目标 Pod 并且未匹配到，跳过
-          if target_pods.length > 0 then
-            next unless target_pods.index(pod_name)
-          end
-
-          pre_macro = " #{macro_name}=@(\\\"#{pod_name}\\\")"
+          
+          # The target Pod is passed in and no match, next
+          next if target_pods.length > 0 and target_pods.index(pod_name) == nil
 
           gcc_line = ''
           xcconfig_file = File.open(xcconfig)
@@ -85,12 +82,16 @@ module Pod
           end
           xcconfig_file.close
 
-          # 未找到 GCC_PREPROCESSOR_DEFINITIONS 行，跳过
+          # no found GCC_PREPROCESSOR_DEFINITIONS line, next
           next if gcc_line.empty?
-          # GCC_PREPROCESSOR_DEFINITIONS 行已包含目标预编译宏（Preprocessor Macros），跳过
-          next if gcc_line.include?(macro_name)
+          # GCC_PREPROCESSOR_DEFINITIONS line already contains the target Preprocessor Macros, next
+          if gcc_line.include?(macro_name) then
+            already_pods.push(pod_name) unless already_pods.index(pod_name)
+            next
+          end 
 
-          macro_line = gcc_line.chomp + pre_macro + "\n"
+          pre_macro = "#{macro_name}=@(\\\"#{pod_name}\\\")"
+          macro_line = gcc_line.chomp + " " + pre_macro + "\n"
           xcconfig_text = File.read(xcconfig)
           xcconfig_text = xcconfig_text.gsub(gcc_line, macro_line)
         
@@ -101,10 +102,16 @@ module Pod
           completed_pods.push(pod_name) unless completed_pods.index(pod_name)
 
         end
-
+        
         if completed_pods.length > 0 then
           UI.puts "Pod resource complete! These pods have been changed: #{completed_pods}."
-        else
+        end
+        
+        if already_pods.length > 0 then
+          UI.puts "These pods already have current macro: #{already_pods}."
+        end
+
+        if completed_pods.length <= 0 and already_pods.length <= 0 then
           UI.puts "No pod has been changed."
         end
 
